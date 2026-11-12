@@ -1,0 +1,14 @@
+# Used by the Supabase CLI (supabase functions deploy hb-tick).
+project_id = "dbljeylvmngihvlltydj"
+
+[functions.hb-tick]
+# The schedule calls the job with a secret header instead of a user sign-in.
+verify_jwt = false
+
+[functions.hb-slack]
+# Slack signs its requests with the signing secret (checked in the function), not a user sign-in.
+verify_jwt = false
+
+[functions.hb-kpi]
+# Called by the daily schedule with the cron secret.
+verify_jwt = false
