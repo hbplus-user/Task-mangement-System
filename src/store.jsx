@@ -114,18 +114,31 @@ export function StoreProvider({ children }) {
         setAuthUser(user);
         email = user.email;
       }
-      const s = await sync.loadAll();
+      let s = await sync.loadAll();
       if (!s) return setStatus('empty');
       s.sessionUserId = pickSession(s, email);
-      if (!DEMO_LOGIN && !s.sessionUserId) return setStatus('noaccount');
+      let joined = false;
+      if (!DEMO_LOGIN && !s.sessionUserId) {
+        // First sign-in with a company account: join the team automatically (supabase/migrations/005_auto_join.sql).
+        const offboarded = s.users.some((u) => u.email.toLowerCase() === email.toLowerCase() && u.status === 'inactive');
+        if (offboarded) return setStatus('noaccount');
+        const { data: newId, error: joinErr } = await supabase.rpc('hb_join');
+        if (joinErr) console.error('hb_join', joinErr);
+        if (!newId) return setStatus('noaccount');
+        s = await sync.loadAll();
+        s.sessionUserId = pickSession(s, email);
+        if (!s.sessionUserId) return setStatus('noaccount');
+        joined = true;
+      }
       leader.current = await sync.holdLease();
       finish(s);
+      if (joined) toast("Welcome to HB+ Tasks! 🌱 You've been added to the team — a founder will set your vertical and manager.");
     } catch (e) {
       console.error(e);
       setError(e.message || String(e));
       setStatus('error');
     }
-  }, [finish]);
+  }, [finish, toast]);
 
   useEffect(() => {
     boot();

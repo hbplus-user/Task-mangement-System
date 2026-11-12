@@ -417,7 +417,9 @@ export default function App() {
     body = (
       <>
         <h1 className="serif" style={{ fontSize: 28 }}>Almost there</h1>
-        <p className="muted">You're signed in as <b>{authUser?.email}</b>, but there's no HB+ Tasks account for this email yet. Ask a founder or admin to add you in Admin → Users.</p>
+        <p className="muted">
+          You're signed in as <b>{authUser?.email}</b>, but we couldn't add you to HB+ Tasks. Either this account was deactivated, or automatic joining isn't switched on yet (a founder runs <code>supabase/migrations/005_auto_join.sql</code> once). Ask a founder or admin to check Admin → Users.
+        </p>
         <button className="btn" onClick={signOut}>Sign out</button>
       </>
     );
