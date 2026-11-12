@@ -418,9 +418,19 @@ export default function App() {
       <>
         <h1 className="serif" style={{ fontSize: 28 }}>Almost there</h1>
         <p className="muted">
-          You're signed in as <b>{authUser?.email}</b>, but we couldn't add you to HB+ Tasks. Either this account was deactivated, or automatic joining isn't switched on yet (a founder runs <code>supabase/migrations/005_auto_join.sql</code> once). Ask a founder or admin to check Admin → Users.
+          You're signed in as <b>{authUser?.email}</b>, but we couldn't add you to HB+ Tasks yet.
         </p>
-        <button className="btn" onClick={signOut}>Sign out</button>
+        {error && (
+          <div className="hint-box bad" style={{ marginBottom: 14 }}>
+            {error}
+          </div>
+        )}
+        <div className="row" style={{ gap: 10 }}>
+          <button className="btn primary" onClick={retry}>
+            Try again
+          </button>
+          <button className="btn" onClick={signOut}>Sign out</button>
+        </div>
       </>
     );
   else

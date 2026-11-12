@@ -100,6 +100,7 @@ export function StoreProvider({ children }) {
 
   const boot = useCallback(async () => {
     setStatus('loading');
+    setError(null);
     try {
       if (MODE === 'local') {
         const s = loadLocal() || seed();
@@ -121,13 +122,22 @@ export function StoreProvider({ children }) {
       if (!DEMO_LOGIN && !s.sessionUserId) {
         // First sign-in with a company account: join the team automatically (supabase/migrations/005_auto_join.sql).
         const offboarded = s.users.some((u) => u.email.toLowerCase() === email.toLowerCase() && u.status === 'inactive');
-        if (offboarded) return setStatus('noaccount');
+        if (offboarded) {
+          setError('This account was deactivated (offboarded). A founder or admin can re-activate it in Admin → Users.');
+          return setStatus('noaccount');
+        }
         const { data: newId, error: joinErr } = await supabase.rpc('hb_join');
         if (joinErr) console.error('hb_join', joinErr);
-        if (!newId) return setStatus('noaccount');
+        if (!newId) {
+          setError(joinErr ? `Automatic joining failed: ${joinErr.message}` : 'Automatic joining did not add you.');
+          return setStatus('noaccount');
+        }
         s = await sync.loadAll();
         s.sessionUserId = pickSession(s, email);
-        if (!s.sessionUserId) return setStatus('noaccount');
+        if (!s.sessionUserId) {
+          setError('You were added, but your account could not be loaded. Please press Try again.');
+          return setStatus('noaccount');
+        }
         joined = true;
       }
       leader.current = await sync.holdLease();
