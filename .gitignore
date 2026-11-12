@@ -5,6 +5,9 @@ dist
 # Supabase (database scripts, edge functions, cron secret) — kept local only
 supabase/
 
+# Slack app manifest — kept local only
+slack/
+
 # Secrets and keys — never commit
 .env
 .env.*
