@@ -1,5 +1,20 @@
 node_modules
 dist
 .DS_Store
-.env.local
-supabase/cron.sql
+
+# Supabase (database scripts, edge functions, cron secret) — kept local only
+supabase/
+
+# Secrets and keys — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*secret*
+*secrets*
+*credentials*
+service-account*.json
+cron.sql
