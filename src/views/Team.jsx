@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { Seg, Pill, Bar, Avatar, Modal, TierPill, go, Empty, StatusPill, Icon } from '../components/ui.jsx';
+import { Seg, Pill, Bar, Avatar, Modal, TierPill, go, Empty, StatusPill, Icon, UserSelect, useRoute } from '../components/ui.jsx';
 import TaskForm from '../components/TaskForm.jsx';
-import { Kanban } from './Tasks.jsx';
+import { Kanban, TaskTable, PERIODS, inPeriod, periodHint } from './Tasks.jsx';
+import CalendarView from './Calendar.jsx';
 import { ApprovalCard } from './Approvals.jsx';
 import { teamScope, userById, flagsOf, loadFor, loadTone, isWorkItem, canSeeFull, verticalById, firstName, isFA } from '../engine/core.js';
 import { approvalsFor } from '../engine/actions.js';
@@ -36,7 +37,11 @@ export function SowPill({ userId }) {
 
 export default function TeamView() {
   const { s, me } = useStore();
-  const [view, setView] = useState('people');
+  const { query } = useRoute();
+  const [view, setView] = useState(query.view || 'people');
+  const [period, setPeriod] = useState('all');
+  const [who, setWho] = useState('');
+  const [state, setState] = useState('open');
   const [vertical, setVertical] = useState('all');
   const [cell, setCell] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -58,6 +63,12 @@ export default function TeamView() {
   ];
   const reviews = s.items.filter((i) => i.status === 'in_review' && i.reviewerId === me);
   const masked = (i) => !canSeeFull(s, me, i);
+  // Team tasks (List / Kanban / Calendar): one person or everyone in scope, by deadline period.
+  const shown = who ? [who] : people;
+  const teamTasks = work
+    .filter((i) => shown.includes(i.ownerId) && inPeriod(i, period, t))
+    .filter((i) => (state === 'open' ? !['closed', 'cancelled', 'skipped'].includes(i.status) : state === 'done' ? i.status === 'closed' : true))
+    .sort((a, b) => (state === 'done' ? (b.closedAt || 0) - (a.closedAt || 0) : (a.currentDeadline || 9e15) - (b.currentDeadline || 9e15)));
   const verts = [...new Set(teamScope(s, me).flatMap((id) => userById(s, id).verticals.map((v) => v.vid)))];
 
   return (
@@ -78,7 +89,7 @@ export default function TeamView() {
               </option>
             ))}
           </select>
-          <Seg options={[['people', 'List'], ['kanban', 'Kanban'], ['workload', 'Workload']]} value={view} onChange={setView} />
+          <Seg options={[['people', 'People'], ['list', 'List'], ['kanban', 'Kanban'], ['calendar', 'Calendar'], ['workload', 'Workload']]} value={view} onChange={setView} />
           <button className="btn primary" onClick={() => setCreating(true)}>
             + New task
           </button>
@@ -113,7 +124,29 @@ export default function TeamView() {
         </div>
       </div>
 
-      {view === 'kanban' && <Kanban items={live.concat(work.filter((i) => i.status === 'closed' && t - (i.closedAt || 0) < 7 * DAY))} masked={masked} />}
+      {['list', 'kanban', 'calendar'].includes(view) && (
+        <div className="row wrap" style={{ marginBottom: 14, gap: 10 }}>
+          <UserSelect className="input sm" style={{ width: 'auto' }} value={who} onChange={(v) => setWho(v || '')} include={people} placeholder="Everyone" />
+          {view !== 'calendar' && <Seg sm options={PERIODS} value={period} onChange={setPeriod} />}
+          {view === 'list' && <Seg sm options={[['open', 'Open'], ['done', 'Done'], ['all', 'All']]} value={state} onChange={setState} />}
+          {view !== 'calendar' && <span className="small muted">{teamTasks.length} tasks{period !== 'all' ? ` ${periodHint(period)}` : ''}</span>}
+        </div>
+      )}
+
+      {view === 'list' && (
+        <div className="card" style={{ padding: '8px 16px' }}>
+          {teamTasks.length === 0 ? <Empty>No team tasks{period !== 'all' ? ` ${periodHint(period)}` : ''}.</Empty> : <TaskTable list={teamTasks} tab={state === 'open' ? 'doing' : 'all'} />}
+        </div>
+      )}
+
+      {view === 'kanban' && (
+        <Kanban
+          items={work.filter((i) => shown.includes(i.ownerId) && inPeriod(i, period, t) && (['awaiting', 'pending_approval', 'open', 'in_progress', 'blocked', 'in_review'].includes(i.status) || (i.status === 'closed' && t - (i.closedAt || 0) < 7 * DAY)))}
+          masked={masked}
+        />
+      )}
+
+      {view === 'calendar' && <CalendarView embedded people={shown} />}
 
       {view === 'workload' && (
         <div className="card">

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { Pill, Avatar, Modal, Field, UserSelect, go, Empty, StatusPill, Choice } from '../components/ui.jsx';
 import { P, POLICY_GROUPS, DEFAULT_POLICY, POLICY_LABEL, COMPANY } from '../engine/policy.js';
-import { userById, nameOf, firstName, ABILITIES, can, isFA, isFounder, uid, verticalById, log, notify, founders, scoreEvent, mainManager, itemById } from '../engine/core.js';
+import { userById, nameOf, firstName, ABILITIES, can, isFA, isFounder, uid, verticalById, log, notify, founders, scoreEvent, mainManager, itemById, directReports, reportTree, activeUsers } from '../engine/core.js';
 import { changePolicy, currentPolicyValue, rolesChanged, linkedOpenItems, offboardReassign } from '../engine/actions.js';
 import { tick } from '../engine/tick.js';
 import { now, HOUR, DAY, fmtDT, fmtDate, dateKey, parseKey, atTime, addDays, ago } from '../lib/time.js';
@@ -103,6 +103,9 @@ function Users() {
                       {verticalById(s, v.vid)?.name} · {v.managerId ? firstName(s, v.managerId) : '—'}
                     </div>
                   ))}
+                  {directReports(s, u.id).length > 0 && (
+                    <div className="tiny muted">Manages: {directReports(s, u.id).map((r) => firstName(s, r)).join(', ')}</div>
+                  )}
                 </td>
                 <td className="num">{u.hours}</td>
                 <td>
@@ -130,13 +133,53 @@ function UserEdit({ id, onClose }) {
   );
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const canRole = isFA(s, me);
+  // People who report to this person. Picked from the manager's side; on save each
+  // added person's main vertical gets this person as manager.
+  const [reports, setReports] = useState(() => (existing ? directReports(s, existing.id) : []));
+  const [addPick, setAddPick] = useState('');
+  // Can't add yourself, or anyone above you (that would make a loop).
+  const above = (() => {
+    const out = [];
+    let cur = existing ? mainManager(s, existing.id) : null;
+    while (cur && !out.includes(cur)) {
+      out.push(cur);
+      cur = mainManager(s, cur);
+    }
+    return out;
+  })();
   const save = () => {
     if (!f.name.trim()) return toast('Name is needed.', 'error');
     if (!f.email.toLowerCase().endsWith(`@${COMPANY.domain}`)) return toast(`Email must be on @${COMPANY.domain}.`, 'error');
     if (!f.verticals.length || !f.verticals.some((v) => v.main)) return toast('Pick at least one vertical and mark one as main.', 'error');
     if (f.role !== 'founder' && f.verticals.some((v) => !v.managerId)) return toast('Every vertical needs a manager (except for founders).', 'error');
     if (f.verticals.some((v) => v.managerId === (existing?.id || 'x'))) return toast("Someone can't be their own manager.", 'error');
+    if (existing && reports.some((r) => f.verticals.some((v) => v.managerId === r))) return toast(`${f.name.split(' ')[0]} can't manage their own manager.`, 'error');
+    const before = existing ? directReports(s, existing.id) : [];
+    const added = reports.filter((r) => !before.includes(r));
+    const removed = before.filter((r) => !reports.includes(r));
+    // People taken off this team go to this person's own manager (or a founder).
+    const fallback = existing && (f.verticals.find((v) => v.main)?.managerId || founders(s).find((x) => x !== existing.id));
+    if (removed.length && !fallback) return toast('Give the people you removed a new manager from their own row first.', 'error');
     commit((st) => {
+      if (existing) {
+        for (const rid of added) {
+          const r = userById(st, rid);
+          if (!r) continue;
+          const mv = r.verticals.find((v) => v.main) || r.verticals[0];
+          if (mv) mv.managerId = id;
+          else r.verticals.push({ vid: f.verticals.find((v) => v.main)?.vid, managerId: id, main: true });
+          st.activity.push({ id: uid('a'), ts: now(), userId: me, itemId: null, action: `Manager changed: ${r.name}`, from: null, to: f.name });
+          notify(st, rid, `You now report to *${f.name}*.`);
+          notify(st, id, `*${r.name}* now reports to you.`);
+        }
+        for (const rid of removed) {
+          const r = userById(st, rid);
+          if (!r) continue;
+          for (const v of r.verticals) if (v.managerId === id) v.managerId = fallback;
+          st.activity.push({ id: uid('a'), ts: now(), userId: me, itemId: null, action: `Manager changed: ${r.name}`, from: f.name, to: nameOf(st, fallback) });
+          notify(st, rid, `You now report to *${nameOf(st, fallback)}*.`);
+        }
+      }
       if (existing) {
         const u = userById(st, id);
         const roleChange = u.role !== f.role || JSON.stringify(u.customRoles) !== JSON.stringify(f.customRoles);
@@ -205,6 +248,44 @@ function UserEdit({ id, onClose }) {
             + Vertical
           </button>
         </Field>
+        {existing && (
+          <Field
+            label={`Team members — people who report to ${f.name.split(' ')[0] || 'this person'}`}
+            hint="Anyone can be a manager — a Member, Admin or Founder. Added people get this person as the manager of their main vertical. Removed people go to this person's own manager."
+            className="full"
+          >
+            <div className="row wrap">
+              {reports.length === 0 && <span className="small muted">No one yet.</span>}
+              {reports.map((r) => (
+                <Pill key={r} className="sm">
+                  {nameOf(s, r)}{' '}
+                  <button className="btn xs ghost" title="Remove from this team" onClick={() => setReports(reports.filter((x) => x !== r))}>
+                    ✕
+                  </button>
+                </Pill>
+              ))}
+            </div>
+            <div className="row wrap" style={{ marginTop: 6 }}>
+              <UserSelect
+                className="input sm"
+                value={addPick}
+                placeholder="Add a team member…"
+                exclude={[existing.id, ...reports, ...above]}
+                onChange={(m) => setAddPick(m || '')}
+              />
+              <button
+                className="btn xs"
+                disabled={!addPick}
+                onClick={() => {
+                  setReports([...reports, addPick]);
+                  setAddPick('');
+                }}
+              >
+                + Add
+              </button>
+            </div>
+          </Field>
+        )}
       </div>
     </Modal>
   );

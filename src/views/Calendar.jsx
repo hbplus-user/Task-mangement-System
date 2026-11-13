@@ -7,13 +7,16 @@ import { now, DAY, startOfWeek, startOfDay, addDays, addMonths, dateKey, monthNa
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-export default function CalendarView() {
+// embedded: shown inside My Tasks / Team (no page title).
+// people: show exactly these people's tasks (Team view); otherwise Mine / My team toggle.
+export default function CalendarView({ embedded = false, people: fixedPeople = null }) {
   const { s, me } = useStore();
   const [mode, setMode] = useState('month');
   const [anchor, setAnchor] = useState(now());
-  const [scope, setScope] = useState('mine');
+  const [pickScope, setScope] = useState('mine');
   const team = teamScope(s, me);
-  const people = scope === 'mine' ? [me] : [me, ...team];
+  const scope = fixedPeople ? 'team' : pickScope;
+  const people = fixedPeople || (scope === 'mine' ? [me] : [me, ...team]);
   const items = s.items.filter((i) => (people.includes(i.ownerId) || (scope === 'mine' && i.assigneeId === me)) && i.currentDeadline && i.type !== 'stream' && !['cancelled', 'skipped'].includes(i.status));
   const toneOf = (i) => (i.status === 'closed' ? 'done' : healthTone(s, i));
 
@@ -105,14 +108,19 @@ export default function CalendarView() {
 
   return (
     <div>
-      <div className="page-head">
-        <div>
-          <div className="eyebrow">Tasks on their current deadline · original shown faintly</div>
-          <h1 className="page-title">Calendar</h1>
+      {!embedded && (
+        <div className="page-head">
+          <div>
+            <div className="eyebrow">Tasks on their current deadline · original shown faintly</div>
+            <h1 className="page-title">Calendar</h1>
+          </div>
         </div>
+      )}
+      <div className="row wrap" style={{ marginBottom: 10, gap: 10, justifyContent: 'space-between' }}>
+        <span className="small muted">Tasks on their current deadline · original deadline shown faintly</span>
         <div className="row wrap">
-          {team.length > 0 && <Seg sm options={[['mine', 'Mine'], ['team', 'My team']]} value={scope} onChange={setScope} />}
-          <Seg options={[['month', 'Month'], ['week', 'Week'], ['day', 'Day']]} value={mode} onChange={setMode} />
+          {!fixedPeople && team.length > 0 && <Seg sm options={[['mine', 'Mine'], ['team', 'My team']]} value={pickScope} onChange={setScope} />}
+          <Seg sm options={[['month', 'Month'], ['week', 'Week'], ['day', 'Day']]} value={mode} onChange={setMode} />
         </div>
       </div>
       <div className="row" style={{ marginBottom: 14 }}>

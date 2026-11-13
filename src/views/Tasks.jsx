@@ -6,7 +6,9 @@ import TaskForm from '../components/TaskForm.jsx';
 import { flagsOf, projectOf, canSeeFull, TYPE_LABEL, STATUS, itemById, firstName } from '../engine/core.js';
 import { allowedActions } from '../engine/actions.js';
 import { priorityOf } from '../engine/sow.js';
-import { now, DAY, dueLabel } from '../lib/time.js';
+import { now, DAY, dueLabel, periodRange } from '../lib/time.js';
+import MatrixView from './Matrix.jsx';
+import CalendarView from './Calendar.jsx';
 
 const TABS = [
   ['doing', 'Doing'],
@@ -102,6 +104,104 @@ export function Kanban({ items, masked = () => false }) {
   );
 }
 
+export const PERIODS = [['all', 'All'], ['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['quarter', 'Qtr']];
+const PERIOD_HINT = { day: 'due today', week: 'due this week', month: 'due this month', quarter: 'due this quarter' };
+export const periodHint = (p) => PERIOD_HINT[p] || '';
+// Deadline inside today / this week / this month / this quarter. "All" keeps everything.
+export function inPeriod(item, period, t = now()) {
+  if (period === 'all') return true;
+  if (!item.currentDeadline) return false;
+  const [a, b] = periodRange(period, t);
+  return item.currentDeadline >= a && item.currentDeadline <= b;
+}
+
+// The task table (used by My Tasks and Team). Sub-tasks sit under their main task.
+export function TaskTable({ list, tab = 'all' }) {
+  const { s, me } = useStore();
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  const toggle = (id) =>
+    setCollapsed((c) => {
+      const n = new Set(c);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  return (
+            <div className="table-wrap">
+      <table className="t">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Status</th>
+            <th className="hide-m">Owner</th>
+            <th>Deadline</th>
+            <th className="hide-m">Size · Impact</th>
+            <th className="hide-m">Progress</th>
+          </tr>
+        </thead>
+        <tbody>
+          {treeRows(s, list, tab, collapsed).map(({ item: i, kids, child, last }) => {
+            const full = canSeeFull(s, me, i);
+            const parent = !child && i.type === 'subtask' && i.parentId ? itemById(s, i.parentId) : null;
+            const doneKids = kids.filter((k) => k.status === 'closed').length;
+            const open = !collapsed.has(i.id);
+            return (
+              <tr key={(child ? 'c' : 'p') + i.id} className={`click ${child ? `sub-row${last ? ' last' : ''}` : ''} ${kids.length ? 'has-kids' : ''}`} onClick={() => go(`/task/${i.id}`)}>
+                <td className="muted nowrap small">{i.key}</td>
+                <td style={{ minWidth: 220 }} className="tree-cell">
+                  <div className="tree-title">
+                    {kids.length > 0 && (
+                      <button
+                        className={`tree-toggle ${open ? '' : 'closed'}`}
+                        title={open ? 'Hide sub-tasks' : 'Show sub-tasks'}
+                        aria-expanded={open}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggle(i.id);
+                        }}
+                      >
+                        <Icon name="down" size={16} stroke={2} />
+                      </button>
+                    )}
+                    <span className="b">{full ? i.title : 'Private task'}</span>
+                    {kids.length > 0 && (
+                      <span className="kid-badge">
+                        {kids.length} sub-task{kids.length > 1 ? 's' : ''} · {doneKids} done
+                      </span>
+                    )}
+                  </div>
+                  <div className="row wrap tiny" style={{ gap: 6, marginTop: 4 }}>
+                    {i.type !== 'task' && !child && <Pill className="sm">{TYPE_LABEL[i.type]}</Pill>}
+                    {parent && <span className="faint">↳ under {parent.key} · {canSeeFull(s, me, parent) ? parent.title : 'Private task'}</span>}
+                    {i.recurringId && <Pill className="sm">↻ Recurring</Pill>}
+                    {full && <Flags item={i} />}
+                  </div>
+                </td>
+                <td>
+                  <StatusPill item={i} sm />
+                </td>
+                <td className="hide-m">
+                  <Person id={i.ownerId} />
+                </td>
+                <td className="nowrap small">
+                  <Deadline item={i} short />
+                  {i.originalDeadline && i.originalDeadline !== i.currentDeadline && <div className="tiny faint">extended</div>}
+                </td>
+                <td className="hide-m">
+                  <SizeImpact item={i} />
+                </td>
+                <td className="hide-m">
+                  <ProgressInline item={i} />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // Main tasks with their sub-tasks right underneath (like a timeline).
 // A sub-task whose main task is also in the list is shown under it, not on its own.
 export function treeRows(s, list, tab, collapsed) {
@@ -117,20 +217,14 @@ export function treeRows(s, list, tab, collapsed) {
   return rows;
 }
 
-export default function TasksView() {
+export default function TasksView({ initialView }) {
   const { s, me } = useStore();
   const { query } = useRoute();
   const [tab, setTab] = useState(query.tab || 'doing');
-  const [view, setView] = useState('list');
+  const [view, setView] = useState(initialView || query.view || 'list');
   const [creating, setCreating] = useState(false);
   const [q, setQ] = useState('');
-  const [collapsed, setCollapsed] = useState(() => new Set());
-  const toggle = (id) =>
-    setCollapsed((c) => {
-      const n = new Set(c);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
+  const [period, setPeriod] = useState(query.period || 'all');
   const [fl, setFl] = useState({ role: 'any', type: 'any', vertical: 'any', size: 'any', impact: 'any', deadline: 'any', project: 'any', sort: 'deadline' });
   const setF = (k, v) => setFl((x) => ({ ...x, [k]: v }));
   const t = now();
@@ -167,7 +261,7 @@ export default function TasksView() {
     }
   };
   const pool = s.items.filter((i) => i.blockedBy === me && i.status === 'blocked' && !mineAll.includes(i));
-  const all = [...mineAll, ...pool];
+  const all = [...mineAll, ...pool].filter((i) => inPeriod(i, period, t));
   const counts = Object.fromEntries(TABS.map(([k]) => [k, all.filter((i) => inTab(i, k)).length]));
   const projects = s.items.filter((i) => i.type === 'project' || i.type === 'stream');
 
@@ -215,115 +309,52 @@ export default function TasksView() {
           </h1>
         </div>
         <div className="row wrap">
-          <Seg options={[['list', 'List'], ['kanban', 'Kanban']]} value={view} onChange={setView} />
+          <Seg options={[['list', 'List'], ['kanban', 'Kanban'], ['matrix', 'Matrix'], ['calendar', 'Calendar']]} value={view} onChange={setView} />
         </div>
       </div>
-      {view === 'list' && (
-        <div className="tabs">
-          {TABS.map(([k, l]) => (
-            <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-              {l}
-              <span className="n">{counts[k]}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="row wrap" style={{ marginBottom: 16 }}>
-        <div className="row" style={{ position: 'relative', flex: '1 1 220px', maxWidth: 320 }}>
-          <input className="input sm" placeholder="Search title or ID…" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-        {sel('role', [['any', 'Any role'], ['owner', 'I own'], ['assignee', "I'm assignee"], ['creator', 'I created'], ['reviewer', 'I review'], ['contributor', 'I contribute']])}
-        {sel('type', [['any', 'Any type'], ...Object.entries(TYPE_LABEL).filter(([k]) => k !== 'cycle')])}
-        {sel('vertical', [['any', 'Any vertical'], ...s.verticals.map((v) => [v.id, v.name])])}
-        {sel('size', [['any', 'Any size'], ['S', 'S'], ['M', 'M'], ['L', 'L']])}
-        {sel('impact', [['any', 'Any impact'], ['5', 'Impact 5'], ['3', 'Impact 3'], ['1', 'Impact 1']])}
-        {sel('deadline', [['any', 'Any deadline'], ['overdue', 'Overdue'], ['week', 'Next 7 days'], ['month', 'Next 30 days']])}
-        {sel('project', [['any', 'Any project'], ...projects.map((p) => [p.id, p.title])])}
-        {sel('sort', [['deadline', 'Sort: deadline'], ['priority', 'Sort: priority'], ['impact', 'Sort: impact']])}
-      </div>
-
-      {view === 'kanban' ? (
-        <Kanban items={list} />
-      ) : (
-        <div className="card" style={{ padding: '8px 16px' }}>
-          {list.length === 0 ? (
-            <Empty>{tab === 'waiting' ? 'Nothing waiting on you. 🌿' : 'No tasks here.'}</Empty>
-          ) : (
-            <div className="table-wrap">
-              <table className="t">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Title</th>
-                    <th>Status</th>
-                    <th className="hide-m">Owner</th>
-                    <th>Deadline</th>
-                    <th className="hide-m">Size · Impact</th>
-                    <th className="hide-m">Progress</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {treeRows(s, list, tab, collapsed).map(({ item: i, kids, child, last }) => {
-                    const full = canSeeFull(s, me, i);
-                    const parent = !child && i.type === 'subtask' && i.parentId ? itemById(s, i.parentId) : null;
-                    const doneKids = kids.filter((k) => k.status === 'closed').length;
-                    const open = !collapsed.has(i.id);
-                    return (
-                      <tr key={(child ? 'c' : 'p') + i.id} className={`click ${child ? `sub-row${last ? ' last' : ''}` : ''} ${kids.length ? 'has-kids' : ''}`} onClick={() => go(`/task/${i.id}`)}>
-                        <td className="muted nowrap small">{i.key}</td>
-                        <td style={{ minWidth: 220 }} className="tree-cell">
-                          <div className="tree-title">
-                            {kids.length > 0 && (
-                              <button
-                                className={`tree-toggle ${open ? '' : 'closed'}`}
-                                title={open ? 'Hide sub-tasks' : 'Show sub-tasks'}
-                                aria-expanded={open}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggle(i.id);
-                                }}
-                              >
-                                <Icon name="down" size={16} stroke={2} />
-                              </button>
-                            )}
-                            <span className="b">{full ? i.title : 'Private task'}</span>
-                            {kids.length > 0 && (
-                              <span className="kid-badge">
-                                {kids.length} sub-task{kids.length > 1 ? 's' : ''} · {doneKids} done
-                              </span>
-                            )}
-                          </div>
-                          <div className="row wrap tiny" style={{ gap: 6, marginTop: 4 }}>
-                            {i.type !== 'task' && !child && <Pill className="sm">{TYPE_LABEL[i.type]}</Pill>}
-                            {parent && <span className="faint">↳ under {parent.key} · {canSeeFull(s, me, parent) ? parent.title : 'Private task'}</span>}
-                            {i.recurringId && <Pill className="sm">↻ Recurring</Pill>}
-                            {full && <Flags item={i} />}
-                          </div>
-                        </td>
-                        <td>
-                          <StatusPill item={i} sm />
-                        </td>
-                        <td className="hide-m">
-                          <Person id={i.ownerId} />
-                        </td>
-                        <td className="nowrap small">
-                          <Deadline item={i} short />
-                          {i.originalDeadline && i.originalDeadline !== i.currentDeadline && <div className="tiny faint">extended</div>}
-                        </td>
-                        <td className="hide-m">
-                          <SizeImpact item={i} />
-                        </td>
-                        <td className="hide-m">
-                          <ProgressInline item={i} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      {view === 'matrix' && <MatrixView embedded />}
+      {view === 'calendar' && <CalendarView embedded />}
+      {(view === 'list' || view === 'kanban') && (
+        <>
+          {view === 'list' && (
+            <div className="tabs">
+              {TABS.map(([k, l]) => (
+                <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
+                  {l}
+                  <span className="n">{counts[k]}</span>
+                </button>
+              ))}
             </div>
           )}
-        </div>
+          <div className="row wrap" style={{ marginBottom: 12, gap: 10 }}>
+            <Seg sm options={PERIODS} value={period} onChange={setPeriod} />
+            {period !== 'all' && <span className="small muted">Showing tasks {periodHint(period)}</span>}
+          </div>
+          <div className="row wrap" style={{ marginBottom: 16 }}>
+            <div className="row" style={{ position: 'relative', flex: '1 1 220px', maxWidth: 320 }}>
+              <input className="input sm" placeholder="Search title or ID…" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            {sel('role', [['any', 'Any role'], ['owner', 'I own'], ['assignee', "I'm assignee"], ['creator', 'I created'], ['reviewer', 'I review'], ['contributor', 'I contribute']])}
+            {sel('type', [['any', 'Any type'], ...Object.entries(TYPE_LABEL).filter(([k]) => k !== 'cycle')])}
+            {sel('vertical', [['any', 'Any vertical'], ...s.verticals.map((v) => [v.id, v.name])])}
+            {sel('size', [['any', 'Any size'], ['S', 'S'], ['M', 'M'], ['L', 'L']])}
+            {sel('impact', [['any', 'Any impact'], ['5', 'Impact 5'], ['3', 'Impact 3'], ['1', 'Impact 1']])}
+            {sel('deadline', [['any', 'Any deadline'], ['overdue', 'Overdue'], ['week', 'Next 7 days'], ['month', 'Next 30 days']])}
+            {sel('project', [['any', 'Any project'], ...projects.map((p) => [p.id, p.title])])}
+            {sel('sort', [['deadline', 'Sort: deadline'], ['priority', 'Sort: priority'], ['impact', 'Sort: impact']])}
+          </div>
+          {view === 'kanban' ? (
+            <Kanban items={list} />
+          ) : (
+            <div className="card" style={{ padding: '8px 16px' }}>
+              {list.length === 0 ? (
+                <Empty>{period !== 'all' ? `No tasks ${periodHint(period)}.` : tab === 'waiting' ? 'Nothing waiting on you. 🌿' : 'No tasks here.'}</Empty>
+              ) : (
+                <TaskTable list={list} tab={tab} />
+              )}
+            </div>
+          )}
+        </>
       )}
       {creating && <TaskForm onClose={() => setCreating(false)} />}
     </div>

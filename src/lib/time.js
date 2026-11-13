@@ -125,3 +125,15 @@ export const endOfQuarter = (ts) => {
   const p = ist(ts);
   return fromIst(p.y, Math.floor(p.mo / 3) * 3 + 3, 1) - 1;
 };
+export const startOfQuarter = (ts) => {
+  const p = ist(ts);
+  return fromIst(p.y, Math.floor(p.mo / 3) * 3, 1);
+};
+// [start, end] of today / this week / this month / this quarter (IST).
+export const periodRange = (period, ts = now()) => {
+  if (period === 'day') return [startOfDay(ts), startOfDay(ts) + DAY - 1];
+  if (period === 'week') return [startOfWeek(ts), startOfWeek(ts) + 7 * DAY - 1];
+  if (period === 'month') return [startOfMonth(ts), endOfMonth(ts)];
+  if (period === 'quarter') return [startOfQuarter(ts), endOfQuarter(ts)];
+  return [-Infinity, Infinity];
+};

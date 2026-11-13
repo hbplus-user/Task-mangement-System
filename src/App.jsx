@@ -10,8 +10,6 @@ import { now } from './lib/time.js';
 import SowView from './views/Sow.jsx';
 import TasksView from './views/Tasks.jsx';
 import TaskDetail from './views/TaskDetail.jsx';
-import MatrixView from './views/Matrix.jsx';
-import CalendarView from './views/Calendar.jsx';
 import TeamView from './views/Team.jsx';
 import CompanyView from './views/Company.jsx';
 import ReportsView from './views/Reports.jsx';
@@ -141,8 +139,6 @@ function Main() {
   const nav = [
     ['sow', 'My SOW', 'sow', true],
     ['tasks', 'My Tasks', 'tasks', true],
-    ['matrix', 'Matrix', 'matrix', true],
-    ['calendar', 'Calendar', 'calendar', true],
     ['goals', 'Goals', 'flag', true],
     ['approvals', 'Approvals', 'approvals', true, approvalCount],
   ];
@@ -153,21 +149,22 @@ function Main() {
     ['reports', 'Reports', 'reports', access.reports],
     ['admin', 'Admin', 'admin', access.admin],
   ].filter((x) => x[3]);
-  const current = page === 'task' ? 'tasks' : page === 'score' ? 'sow' : page;
+  const current = ['task', 'matrix', 'calendar'].includes(page) ? 'tasks' : page === 'score' ? 'sow' : page;
 
   let view;
   switch (page) {
     case 'tasks':
-      view = <TasksView />;
+      view = <TasksView key="tasks" />;
       break;
     case 'task':
       view = <TaskDetail id={parts[1]} />;
       break;
+    // Matrix and Calendar now live inside My Tasks; old links still work.
     case 'matrix':
-      view = <MatrixView />;
+      view = <TasksView key="matrix" initialView="matrix" />;
       break;
     case 'calendar':
-      view = <CalendarView />;
+      view = <TasksView key="calendar" initialView="calendar" />;
       break;
     case 'approvals':
       view = <ApprovalsView />;
@@ -208,7 +205,7 @@ function Main() {
     </a>
   );
 
-  const tabs = [['sow', 'SOW', 'sow'], ['tasks', 'Tasks', 'tasks'], ['matrix', 'Matrix', 'matrix'], access.team ? ['team', 'Team', 'team'] : ['approvals', 'Approvals', 'approvals', approvalCount]];
+  const tabs = [['sow', 'SOW', 'sow'], ['tasks', 'Tasks', 'tasks'], ['approvals', 'Approvals', 'approvals', approvalCount], ...(access.team ? [['team', 'Team', 'team']] : [['goals', 'Goals', 'flag']])];
 
   return (
     <div className="app">

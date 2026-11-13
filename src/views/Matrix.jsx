@@ -12,7 +12,7 @@ function windowEnd(win, t) {
 }
 const WIN_LABEL = { day: 'today', week: 'this week', month: 'this month', quarter: 'this quarter' };
 
-export default function MatrixView() {
+export default function MatrixView({ embedded = false }) {
   const { s, me, commit } = useStore();
   const [win, setWin] = useState('week');
   const [person, setPerson] = useState(me);
@@ -77,6 +77,20 @@ export default function MatrixView() {
 
   return (
     <div>
+      {embedded ? (
+        <div className="row wrap" style={{ marginBottom: 14, gap: 10, justifyContent: 'space-between' }}>
+          <div className="small muted" style={{ maxWidth: 760 }}>
+            <b>{firstName(s, person)}</b> · Urgent = due {WIN_LABEL[win]} · Important = Impact 3 or 5 · {own ? 'drag to adjust your own view (it never changes the real Impact)' : 'view only'}
+            {delegate ? ' · you have reports, so the third box is “Delegate”' : ''}
+          </div>
+          <div className="row wrap">
+            {scope.length > 0 && (
+              <UserSelect className="input sm" style={{ width: 'auto' }} value={person} onChange={(v) => setPerson(v || me)} include={[me, ...scope]} placeholder="Me" />
+            )}
+            <Seg sm options={[['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['quarter', 'Qtr']]} value={win} onChange={setWin} />
+          </div>
+        </div>
+      ) : (
       <div className="page-head">
         <div>
           <div className="eyebrow">{firstName(s, person)} · pending tasks</div>
@@ -95,6 +109,7 @@ export default function MatrixView() {
           <Seg options={[['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['quarter', 'Quarter']]} value={win} onChange={setWin} />
         </div>
       </div>
+      )}
       {own && Object.keys(overrides).length > 0 && (
         <button className="btn xs ghost" style={{ marginBottom: 10 }} onClick={() => commit((st) => { st.matrixOverrides[me] = {}; })}>
           Reset my drag overrides
