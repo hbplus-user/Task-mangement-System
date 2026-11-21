@@ -9,6 +9,7 @@ import { priorityOf } from '../engine/sow.js';
 import { now, DAY, dueLabel, periodRange } from '../lib/time.js';
 import MatrixView from './Matrix.jsx';
 import CalendarView from './Calendar.jsx';
+import SowDaysView from './SowDays.jsx';
 
 const TABS = [
   ['doing', 'Doing'],
@@ -309,11 +310,12 @@ export default function TasksView({ initialView }) {
           </h1>
         </div>
         <div className="row wrap">
-          <Seg options={[['list', 'List'], ['kanban', 'Kanban'], ['matrix', 'Matrix'], ['calendar', 'Calendar']]} value={view} onChange={setView} />
+          <Seg options={[['list', 'List'], ['kanban', 'Kanban'], ['matrix', 'Matrix'], ['calendar', 'Calendar'], ['sow', 'SOW']]} value={view} onChange={setView} />
         </div>
       </div>
       {view === 'matrix' && <MatrixView embedded />}
       {view === 'calendar' && <CalendarView embedded />}
+      {view === 'sow' && <SowDaysView />}
       {(view === 'list' || view === 'kanban') && (
         <>
           {view === 'list' && (

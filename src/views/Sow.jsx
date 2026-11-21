@@ -266,7 +266,7 @@ export default function SowView() {
 }
 
 /* ---------- End-of-day update ---------- */
-function EodFlow({ dayKey, onClose }) {
+export function EodFlow({ dayKey, onClose }) {
   const { s, me, commit, toast } = useStore();
   const items = useMemo(() => eodItems(s, me, dayKey), []); // eslint-disable-line
   const forKey = nextWorkingKey(s, dayKey);
@@ -486,9 +486,9 @@ function EodFlow({ dayKey, onClose }) {
 }
 
 /* ---------- Mark Off ---------- */
-export function OffDialog({ onClose }) {
+export function OffDialog({ onClose, initialDate }) {
   const { s, me, commit, toast } = useStore();
-  const [date, setDate] = useState(dateKey(now()));
+  const [date, setDate] = useState(initialDate || dateKey(now()));
   const [code, setCode] = useState('');
   const [reason, setReason] = useState('');
   const save = () => {

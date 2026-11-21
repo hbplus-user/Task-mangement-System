@@ -391,3 +391,17 @@ table.t tr.sub-row td.tree-cell::before { content: ''; position: absolute; left:
 table.t tr.sub-row.last td.tree-cell::before { bottom: 50%; }
 table.t tr.sub-row td.tree-cell::after { content: ''; position: absolute; left: 20px; top: 50%; width: 16px; border-top: 2px solid var(--line); }
 table.t tr.sub-row td:first-child { padding-left: 22px; }
+
+/* SOW day picker inside My Tasks */
+.sow-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.sow-day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border: 1px solid var(--line, #e6ddd2); border-radius: 12px; background: transparent; cursor: pointer; font: inherit; color: inherit; }
+.sow-day b { font-size: 16px; }
+.sow-day.today { border-color: var(--primary, #6f6a2e); }
+.sow-day.on { background: var(--primary, #6f6a2e); color: #fff; }
+.sow-day.on .muted { color: #fff; opacity: .8; }
+.sow-dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; }
+.sow-dot.on_time { background: var(--ok, #5a8f5a); }
+.sow-dot.late { background: var(--risk, #d9a441); }
+.sow-dot.missed { background: var(--overdue, #c0533a); }
+.sow-dot.pending { background: var(--gold, #c9a24a); }
+.sow-dot.off, .sow-dot.holiday { background: #bbb; }
