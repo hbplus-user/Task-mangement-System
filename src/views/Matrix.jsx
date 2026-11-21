@@ -16,6 +16,8 @@ export default function MatrixView({ embedded = false }) {
   const { s, me, commit } = useStore();
   const [win, setWin] = useState('week');
   const [person, setPerson] = useState(me);
+  // 'all' = every task the person is part of (same rule as My Tasks); 'doing' = only what they do themselves.
+  const [show, setShow] = useState('all');
   const [drag, setDrag] = useState(null);
   const [over, setOver] = useState(null);
   const t = now();
@@ -25,8 +27,13 @@ export default function MatrixView({ embedded = false }) {
   const delegate = isManager(s, person);
   const overrides = (own && s.matrixOverrides[me]) || {};
 
+  const doing = (i) => i.ownerId === person || i.assigneeId === person;
+  const partOf = (i) => doing(i) || i.creatorId === person || i.reviewerId === person || (i.contributors || []).includes(person);
   const items = s.items.filter(
-    (i) => (i.ownerId === person || i.assigneeId === person) && ['awaiting', 'open', 'in_progress', 'blocked'].includes(i.status) && (i.type === 'task' || i.type === 'subtask')
+    (i) =>
+      (show === 'doing' ? doing(i) : partOf(i)) &&
+      ['pending_approval', 'awaiting', 'open', 'in_progress', 'blocked', 'in_review'].includes(i.status) &&
+      (i.type === 'task' || i.type === 'subtask')
   );
   const quadOf = (i) => {
     if (overrides[i.id]) return overrides[i.id];
@@ -70,6 +77,10 @@ export default function MatrixView({ embedded = false }) {
           {q === 'q3' && !delegate && i.size === 'S' && <Pill tone="primary" className="sm">⏱ Timebox 30 min</Pill>}
           {q === 'q3' && delegate && <Pill tone="primary" className="sm">Hand to someone?</Pill>}
           {i.assigneeId && <Pill tone="gold" className="sm">With {firstName(s, i.assigneeId)}</Pill>}
+          {!i.assigneeId && i.ownerId !== person && <Pill tone="gold" className="sm">Owner {firstName(s, i.ownerId)}</Pill>}
+          {i.status === 'pending_approval' && <Pill tone="gold" className="sm">Pending approval</Pill>}
+          {i.status === 'awaiting' && <Pill className="sm">Not accepted yet</Pill>}
+          {i.status === 'in_review' && <Pill tone="review" className="sm">In review</Pill>}
         </div>
       </div>
     );
@@ -87,6 +98,7 @@ export default function MatrixView({ embedded = false }) {
             {scope.length > 0 && (
               <UserSelect className="input sm" style={{ width: 'auto' }} value={person} onChange={(v) => setPerson(v || me)} include={[me, ...scope]} placeholder="Me" />
             )}
+            <Seg sm options={[['all', 'All mine'], ['doing', 'I do']]} value={show} onChange={setShow} />
             <Seg sm options={[['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['quarter', 'Qtr']]} value={win} onChange={setWin} />
           </div>
         </div>
@@ -106,6 +118,7 @@ export default function MatrixView({ embedded = false }) {
           {scope.length > 0 && (
             <UserSelect className="input sm" style={{ width: 'auto' }} value={person} onChange={(v) => setPerson(v || me)} include={[me, ...scope]} placeholder="Me" />
           )}
+          <Seg options={[['all', 'All mine'], ['doing', 'I do']]} value={show} onChange={setShow} />
           <Seg options={[['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['quarter', 'Quarter']]} value={win} onChange={setWin} />
         </div>
       </div>
