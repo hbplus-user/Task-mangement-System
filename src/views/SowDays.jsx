@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useStore } from '../store.jsx';
-import { Pill, Empty, StatusPill, Accent, go } from '../components/ui.jsx';
+import { Pill, Empty, StatusPill, Accent, go, Modal, Field, Choice } from '../components/ui.jsx';
+import { createItem } from '../engine/actions.js';
 import { itemById, firstName, isWorkItem } from '../engine/core.js';
 import { todaysTop3, sowDayOf, sowDay, sowRequired, sowStatus, openSowDays, myOpenWork, offDayOf, SOW_LABEL } from '../engine/sow.js';
-import { now, dateKey, parseKey, addKey, startOfWeek, fmtLongDay, fmtDate, fmtDT, dueLabel } from '../lib/time.js';
+import { now, atTime, dateKey, parseKey, addKey, startOfWeek, fmtLongDay, fmtDate, fmtDT, dueLabel } from '../lib/time.js';
 import { EodFlow, OffDialog } from './Sow.jsx';
 
 const STATUS_TONE = { on_time: 'ok', late: 'risk', missed: 'overdue', pending: 'gold', off: '', holiday: '', sunday: '', future: '' };
@@ -19,6 +20,7 @@ export default function SowDaysView() {
   const [eod, setEod] = useState(null);
   const [off, setOff] = useState(false);
   const [planning, setPlanning] = useState(null); // ids being picked, or null
+  const [creating, setCreating] = useState(false);
 
   const weekStart = dateKey(startOfWeek(parseKey(day)) + 2 * 3600 * 1000);
   const week = Array.from({ length: 7 }, (_, i) => addKey(weekStart, i));
@@ -90,6 +92,9 @@ export default function SowDaysView() {
             <button className="btn sm orange" onClick={() => setEod(day)}>
               {day === today ? 'Fill today’s SOW' : 'Fill this SOW'}
             </button>
+          )}
+          {!isPast && required && !rec?.submittedAt && (
+            <button className="btn sm primary" onClick={() => setCreating(true)}>{top.planned ? "Edit SOW" : "+ Create SOW"}</button>
           )}
           {!isPast && !offDay && required && (
             <button className="btn sm" onClick={() => setOff(true)}>Mark this day off</button>
@@ -214,7 +219,94 @@ export default function SowDaysView() {
 
       {eod && <EodFlow dayKey={eod} onClose={() => setEod(null)} />}
       {off && <OffDialog initialDate={day} onClose={() => setOff(false)} />}
+      {creating && <CreateSow day={day} onClose={() => setCreating(false)} />}
     </div>
   );
 }
 
+
+/* ---------- Create SOW: plan a day from open tasks + new ones ---------- */
+const blankRow = () => ({ title: '', size: 'S', impact: 3, reason: '' });
+
+function CreateSow({ day, onClose }) {
+  const { s, me, commit, toast } = useStore();
+  const open = myOpenWork(s, me).filter((i) => i.type !== 'cycle');
+  const current = todaysTop3(s, me, day);
+  const [picked, setPicked] = useState(() => (current.planned ? current.ids : []));
+  const [rows, setRows] = useState([blankRow()]);
+  const setRow = (n, k, v) => setRows(rows.map((r, j) => (j === n ? { ...r, [k]: v } : r)));
+  const filled = rows.filter((r) => r.title.trim());
+  const toggle = (id) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id]);
+
+  const save = () => {
+    for (const r of filled) if (!r.reason.trim()) return toast(`“${r.title}”: add a one-line reason for the impact.`, 'error');
+    if (!picked.length && !filled.length) return toast('Pick a task or add a new one.', 'error');
+    let made = 0;
+    const res = commit((st) => {
+      const ids = [...picked];
+      for (const r of filled) {
+        const x = createItem(st, me, { type: 'task', title: r.title, ownerId: me, size: r.size, impact: +r.impact, impactReason: r.reason, deadline: atTime(day, '18:30') });
+        if (x.error) return x;
+        ids.push(x.id);
+        made++;
+      }
+      const d = sowDay(st, me, day);
+      d.top3 = ids.slice(0, 3);
+      d.plannedAt = now();
+      return { ok: true };
+    });
+    if (res?.error) return;
+    toast(`SOW created for ${fmtDate(parseKey(day))}${made ? ` · ${made} new task${made > 1 ? 's' : ''} due that day` : ''}.`);
+    onClose();
+  };
+
+  return (
+    <Modal
+      wide
+      title={`Create SOW · ${fmtLongDay(parseKey(day))}`}
+      sub="Pick what you'll work on and add any new tasks. The first 3 become your Top 3; new tasks are due that day at 6:30 PM. You log how it went with the end-of-day update."
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn ghost" onClick={onClose}>Close</button>
+          <button className="btn primary" onClick={save}>Save SOW</button>
+        </>
+      }
+    >
+      <Field label={`Your open tasks (${picked.length} picked)`}>
+        {open.length === 0 && <Empty>No open tasks — add new ones below.</Empty>}
+        <div className="stack-sm" style={{ maxHeight: 260, overflow: 'auto' }}>
+          {open.map((i) => {
+            const n = picked.indexOf(i.id);
+            return (
+              <label key={i.id} className="check list-row">
+                <input type="checkbox" checked={n >= 0} onChange={() => toggle(i.id)} />
+                <span className="grow ellipsis">{i.title}</span>
+                {n >= 0 && n < 3 && <Pill className="sm" tone="gold">★ Top 3</Pill>}
+                <span className="tiny muted">{i.currentDeadline ? dueLabel(i.currentDeadline) : 'No deadline'}</span>
+              </label>
+            );
+          })}
+        </div>
+      </Field>
+      <Field label="New tasks for this day">
+        {rows.map((r, n) => (
+          <div key={n} className="card" style={{ padding: 10, marginBottom: 8 }}>
+            <div className="row wrap" style={{ gap: 8 }}>
+              <input className="input sm grow" placeholder="Task title" value={r.title} onChange={(e) => setRow(n, 'title', e.target.value)} />
+              {rows.length > 1 && <button className="btn xs ghost" onClick={() => setRows(rows.filter((_, j) => j !== n))}>Remove</button>}
+            </div>
+            {r.title.trim() && (
+              <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
+                <Choice options={[['S', 'S'], ['M', 'M'], ['L', 'L']]} value={r.size} onChange={(v) => setRow(n, 'size', v)} />
+                <Choice options={[[1, '1 Low'], [3, '3 Medium'], [5, '5 Critical']]} value={+r.impact} onChange={(v) => setRow(n, 'impact', v)} />
+                <input className="input sm grow" placeholder="Why this impact? (one line)" value={r.reason} onChange={(e) => setRow(n, 'reason', e.target.value)} />
+              </div>
+            )}
+          </div>
+        ))}
+        <button className="btn xs" onClick={() => setRows([...rows, blankRow()])}>+ Another task</button>
+      </Field>
+    </Modal>
+  );
+}
