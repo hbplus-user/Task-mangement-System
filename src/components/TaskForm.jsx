@@ -1,14 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { Modal, Field, UserSelect, Choice, Seg, go } from './ui.jsx';
-import { createItem, createRecurringRule, perform, canEditSizeImpact, FREQ_LABEL, KPI_SOURCES } from '../engine/actions.js';
+import { createItem, createRecurringRule, perform, canEditSizeImpact, FREQ_LABEL, KPI_SOURCES, cycleEnd } from '../engine/actions.js';
 import { GOAL_LABEL } from '../engine/goals.js';
 import { P } from '../engine/policy.js';
 import {
   userById, itemById, sharesVertical, managerOf, firstName, isFounder, loadFor, SIZE_HOURS, verticalById, effectiveDeadline, isAbove, DONE, IMPACT_LABEL, uid,
 } from '../engine/core.js';
 import { potentialPoints } from '../engine/scoring.js';
-import { now, atTime, addDays, toInputDate, startOfWeek, fmtDT, dateKey } from '../lib/time.js';
+import { now, atTime, addDays, toInputDate, startOfWeek, fmtDT, dateKey, parseKey, addKey, DAY } from '../lib/time.js';
 
 const TYPES = [
   ['task', 'Task'],
@@ -60,12 +60,23 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
           everyDays: 7,
           dueAfterDays: 5,
           firstRun: toInputDate(now()),
+          firstDue: '', // '' = worked out from the frequency
+          dueTime: P(s, 'defaultDeadlineTime'),
+          cycleStart: toInputDate(now()),
+          cycleDueDate: '', // '' = end of the first cycle
+          cycleDueTime: P(s, 'defaultDeadlineTime'),
           cycleLength: 'monthly',
           projKey: '',
           kpis: [{ name: '', target: '', unit: '', dir: '>=', src: 'manual' }],
         }
   );
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  // Recurring: first due date defaults to the usual gap for the frequency.
+  const DUE_GAP = { daily: 0, weekly: 5, monthly: 7, quarterly: 14, yearly: 30, custom: 3 };
+  const firstDue = f.firstDue || (f.firstRun ? addKey(f.firstRun, DUE_GAP[f.freq] ?? 5) : '');
+  const dueAfterDays = f.firstRun && firstDue ? Math.round((parseKey(firstDue) - parseKey(f.firstRun)) / DAY) : 0;
+  // Stream: first cycle due date defaults to the end of the first cycle.
+  const cycleDueDate = f.cycleDueDate || (f.cycleStart ? dateKey(cycleEnd(parseKey(f.cycleStart), f.cycleLength)) : '');
   const owner = userById(s, isEdit ? edit.ownerId : f.ownerId);
   const deadline = isEdit ? edit.currentDeadline : f.date ? atTime(f.date, f.time || '18:30') : null;
   const vertical = isEdit ? edit.vertical : f.vertical || owner?.verticals.find((v) => v.main)?.vid;
@@ -139,6 +150,8 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
       private: f.private,
       pinned: f.pinned,
       cycleLength: f.cycleLength,
+      cycleStart: f.type === 'stream' && f.cycleStart ? parseKey(f.cycleStart) : null,
+      cycleDue: f.type === 'stream' && cycleDueDate ? atTime(cycleDueDate, f.cycleDueTime || '18:30') : null,
       projKey: f.projKey,
       kpis: f.kpis.filter((k) => k.name).map(({ src, ...k }) => ({ ...k, source: (src || 'manual').split(':')[0], sourceMetric: src && src !== 'manual' ? src.split(':')[1] : null })),
     };
@@ -150,7 +163,8 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
     const r = commit((st) => {
       if (f.type === 'recurring') {
         if (!data.title?.trim() || !data.impactReason?.trim()) return { error: 'Title and impact reason are needed.' };
-        const res = createRecurringRule(st, me, { ...data, freq: f.freq, everyDays: f.everyDays, dueAfterDays: f.dueAfterDays, firstRun: atTime(f.firstRun, '09:00') });
+        if (dueAfterDays < 0) return { error: 'The first due date must be on or after the first occurrence.' };
+        const res = createRecurringRule(st, me, { ...data, dueTime: f.dueTime || P(s, 'defaultDeadlineTime'), freq: f.freq, everyDays: f.everyDays, dueAfterDays, firstRun: atTime(f.firstRun, '09:00') });
         newId = res.id;
         return res.id ? res : { ok: true };
       }
@@ -274,7 +288,7 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
         {f.type === 'recurring' && (
           <>
             <Field label="Repeats">
-              <select className="input" value={f.freq} onChange={(e) => set('freq', e.target.value)}>
+              <select className="input" value={f.freq} onChange={(e) => setF((x) => ({ ...x, freq: e.target.value, firstDue: '' }))}>
                 {Object.entries(FREQ_LABEL).map(([k, v]) => (
                   <option key={k} value={k}>
                     {v}
@@ -288,23 +302,38 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
               </Field>
             )}
             <Field label="First occurrence on">
-              <input className="input" type="date" value={f.firstRun} onChange={(e) => set('firstRun', e.target.value)} />
+              <input className="input" type="date" value={f.firstRun} onChange={(e) => setF((x) => ({ ...x, firstRun: e.target.value, firstDue: '' }))} />
             </Field>
-            <Field label="Each one is due after" hint="days, at the default deadline time">
-              <input className="input" type="number" min={0} value={f.dueAfterDays} onChange={(e) => set('dueAfterDays', e.target.value)} />
+            <Field
+              label="First one due (IST)"
+              hint={`Each later one is due ${dueAfterDays === 0 ? 'the same day it starts' : `${dueAfterDays} day${dueAfterDays === 1 ? '' : 's'} after it starts`}, at ${f.dueTime || '—'}.`}
+            >
+              <div className="row">
+                <input className="input" type="date" value={firstDue} min={f.firstRun} onChange={(e) => set('firstDue', e.target.value)} />
+                <input className="input" type="time" style={{ maxWidth: 130 }} value={f.dueTime} onChange={(e) => set('dueTime', e.target.value)} />
+              </div>
             </Field>
           </>
         )}
         {f.type === 'stream' && (
           <>
             <Field label="Cycle length">
-              <select className="input" value={f.cycleLength} onChange={(e) => set('cycleLength', e.target.value)}>
-                {['weekly', 'fortnightly', 'monthly', 'quarterly'].map((c) => (
+              <select className="input" value={f.cycleLength} onChange={(e) => setF((x) => ({ ...x, cycleLength: e.target.value, cycleDueDate: '' }))}>
+                {['weekly', 'fortnightly', 'monthly', 'quarterly', 'yearly'].map((c) => (
                   <option key={c} value={c}>
                     {c[0].toUpperCase() + c.slice(1)}
                   </option>
                 ))}
               </select>
+            </Field>
+            <Field label="First cycle starts on">
+              <input className="input" type="date" value={f.cycleStart} onChange={(e) => setF((x) => ({ ...x, cycleStart: e.target.value, cycleDueDate: '' }))} />
+            </Field>
+            <Field label="First cycle due (IST)" hint="Each next cycle starts the day after and runs for the cycle length, due at the same time.">
+              <div className="row">
+                <input className="input" type="date" value={cycleDueDate} min={f.cycleStart} onChange={(e) => set('cycleDueDate', e.target.value)} />
+                <input className="input" type="time" style={{ maxWidth: 130 }} value={f.cycleDueTime} onChange={(e) => set('cycleDueTime', e.target.value)} />
+              </div>
             </Field>
             <Field label="KPIs (required for streams)" className="full" hint="Actuals are entered every Saturday with a source link; the manager verifies at cycle end.">
               {f.kpis.map((k, i) => (

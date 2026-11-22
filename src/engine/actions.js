@@ -114,7 +114,7 @@ export function createItem(s, creatorId, d) {
     sendAssignedDM(s, item);
   }
   if (type === 'stream') {
-    startCycle(s, item, startOfDay(t), d.kpis || []);
+    startCycle(s, item, d.cycleStart ? startOfDay(d.cycleStart) : startOfDay(t), d.kpis || [], d.cycleDue || null);
   }
   // Red-load warning (F2)
   if (isWorkItem(item) && item.currentDeadline) {
@@ -139,14 +139,15 @@ function sendAssignedDM(s, item) {
 
 /* ---------- Streams & cycles ---------- */
 const CYCLE_DAYS = { weekly: 7, fortnightly: 14 };
-export function cycleEnd(start, length) {
-  if (CYCLE_DAYS[length]) return atTime(addDays(start, CYCLE_DAYS[length] - 1), '18:30');
-  const months = length === 'quarterly' ? 3 : 1;
-  return atTime(addDays(addMonths(start, months), -1), '18:30');
+export function cycleEnd(start, length, time = '18:30') {
+  if (CYCLE_DAYS[length]) return atTime(addDays(start, CYCLE_DAYS[length] - 1), time);
+  const months = { quarterly: 3, yearly: 12 }[length] || 1;
+  return atTime(addDays(addMonths(start, months), -1), time);
 }
-export function startCycle(s, stream, start, kpiTemplates) {
+// `endAt` lets the creator pick the first cycle's due date and time.
+export function startCycle(s, stream, start, kpiTemplates, endAt = null) {
   const n = children(s, stream.id).filter((c) => c.type === 'cycle').length + 1;
-  const end = cycleEnd(start, stream.cycleLength);
+  const end = endAt && endAt > start ? endAt : cycleEnd(start, stream.cycleLength);
   const c = {
     ...stream,
     id: uid('i'),
@@ -703,7 +704,7 @@ export function checkProjectClose(s, projectId) {
 }
 
 /* ---------- Recurring ---------- */
-export const FREQ_LABEL = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', quarterly: 'Quarterly', custom: 'Every N days' };
+export const FREQ_LABEL = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly', custom: 'Every N days' };
 export function advanceRun(rule, ts) {
   if (rule.freq === 'daily') {
     let n = addDays(ts, 1);
@@ -713,6 +714,7 @@ export function advanceRun(rule, ts) {
   if (rule.freq === 'weekly') return addDays(ts, 7);
   if (rule.freq === 'monthly') return addMonths(ts, 1);
   if (rule.freq === 'quarterly') return addMonths(ts, 3);
+  if (rule.freq === 'yearly') return addMonths(ts, 12);
   return addDays(ts, Math.max(1, rule.everyDays || 7));
 }
 export function createRecurringRule(s, creatorId, d) {
@@ -721,7 +723,7 @@ export function createRecurringRule(s, creatorId, d) {
     template: { ...d, type: 'task' },
     freq: d.freq || 'weekly',
     everyDays: +d.everyDays || 7,
-    dueAfterDays: d.dueAfterDays != null ? +d.dueAfterDays : { daily: 0, weekly: 5, monthly: 7, quarterly: 14, custom: 3 }[d.freq || 'weekly'],
+    dueAfterDays: d.dueAfterDays != null ? +d.dueAfterDays : { daily: 0, weekly: 5, monthly: 7, quarterly: 14, yearly: 30, custom: 3 }[d.freq || 'weekly'],
     ownerId: d.ownerId,
     creatorId,
     nextRun: atTime(d.firstRun || now(), '09:00'),
@@ -746,7 +748,7 @@ export function runRecurring(s, rule) {
         notify(s, ownersManager(s, prev), `${firstName(s, prev.ownerId)} has missed *${rule.template.title}* twice in a row. A quick chat might help.`, { itemId: prev.id });
       }
     }
-    const deadline = atTime(addDays(rule.nextRun, rule.dueAfterDays), P(s, 'defaultDeadlineTime'));
+    const deadline = atTime(addDays(rule.nextRun, rule.dueAfterDays), rule.template?.dueTime || P(s, 'defaultDeadlineTime'));
     const res = createItem(s, rule.creatorId, { ...rule.template, deadline, recurringId: rule.id, autoAccept: true, comment: null });
     if (res.id) {
       const it = itemById(s, res.id);

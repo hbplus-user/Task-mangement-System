@@ -3,10 +3,10 @@ import {
   firstName, ownersManager, mainManager, founders, notify, post, scoreEvent, once, flagsOf, effectiveDeadline, allowedPauseMs,
   activeUsers, isManager, isFounder, children, userById, managerOf, nameOf, teamScope, isWorkItem, progressOf,
 } from './core.js';
-import { closeWithRating, requestApproval, pendingFor, runRecurring, startCycle, checkProjectClose } from './actions.js';
+import { closeWithRating, requestApproval, pendingFor, runRecurring, startCycle, cycleEnd, checkProjectClose } from './actions.js';
 import { sowRequired, sowDay, sowStatus, sowDayOf } from './sow.js';
 import { leaderboard, tierOf, deliveryScore } from './scoring.js';
-import { now, DAY, HOUR, atTime, addKey, dateKey, parseKey, startOfWeek, startOfMonth, addMonths, fmtDT, monthName, weekday, endOfMonth, isWorkingDay } from '../lib/time.js';
+import { now, DAY, HOUR, atTime, addKey, dateKey, parseKey, startOfWeek, startOfMonth, addMonths, fmtDT, monthName, weekday, endOfMonth, isWorkingDay, toInputTime } from '../lib/time.js';
 import { hourOf } from '../lib/time.js';
 
 // Runs every minute (and on load). Returns true if anything changed.
@@ -62,7 +62,9 @@ export function tick(s) {
       const last = cycles[cycles.length - 1];
       if (last && t > last.currentDeadline) {
         const kpis = s.kpis.filter((k) => k.itemId === last.id).map((k) => ({ name: k.name, target: k.target, unit: k.unit, dir: k.dir, agg: k.agg, source: k.source, sourceMetric: k.sourceMetric }));
-        const c = startCycle(s, item, parseKey(addKey(dateKey(last.currentDeadline), 1)), kpis);
+        // Next cycle keeps the same due time as the last one.
+        const nextStart = parseKey(addKey(dateKey(last.currentDeadline), 1));
+        const c = startCycle(s, item, nextStart, kpis, cycleEnd(nextStart, item.cycleLength, toInputTime(last.currentDeadline)));
         notify(s, item.ownerId, `New cycle for *${item.title}* has started (targets copied from last cycle — edit if needed).`, { itemId: c.id });
         notify(s, ownersManager(s, item), `*${last.title}* has ended. Please verify the KPI actuals to close it.`, { itemId: last.id, buttons: ['open'] });
       }
