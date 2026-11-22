@@ -219,3 +219,21 @@ export function sowCompliance(s, userIds, from, to) {
   return req ? Math.round((ok / req) * 100) : null;
 }
 export { activeUsers };
+
+/* ---------- Adding tasks to a day's plan ---------- */
+// The plan is the day's list of tasks (first 3 = Top 3). The deadline never changes.
+export function addToPlan(s, userId, k, ids) {
+  const d = sowDay(s, userId, k);
+  for (const id of ids) if (!d.top3.includes(id)) d.top3.push(id);
+  d.plannedAt = d.plannedAt || now();
+}
+// Working days from `fromKey` on (today first), for "Add to SOW" pickers.
+export function upcomingWorkDays(s, count = 6, fromKey = dateKey(now())) {
+  const out = [];
+  let k = fromKey;
+  for (let n = 0; out.length < count && n < 30; n++) {
+    if (isWorkingDay(k) && !isHoliday(s, k)) out.push(k);
+    k = addKey(k, 1);
+  }
+  return out;
+}

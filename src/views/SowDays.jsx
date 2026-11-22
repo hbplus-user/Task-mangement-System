@@ -3,7 +3,7 @@ import { useStore } from '../store.jsx';
 import { Pill, Empty, StatusPill, Accent, go, Modal, Field, Choice } from '../components/ui.jsx';
 import { createItem } from '../engine/actions.js';
 import { itemById, firstName, isWorkItem, isHoliday } from '../engine/core.js';
-import { todaysTop3, sowDayOf, sowDay, sowRequired, sowStatus, openSowDays, myOpenWork, offDayOf, nextWorkingKey, SOW_LABEL } from '../engine/sow.js';
+import { todaysTop3, sowDayOf, sowDay, sowRequired, sowStatus, openSowDays, myOpenWork, offDayOf, nextWorkingKey, addToPlan, SOW_LABEL } from '../engine/sow.js';
 import { now, atTime, dateKey, parseKey, addKey, isWorkingDay, startOfWeek, fmtLongDay, fmtDate, fmtDT, dueLabel } from '../lib/time.js';
 import { EodFlow, OffDialog } from './Sow.jsx';
 
@@ -24,12 +24,7 @@ export function unfinishedOn(s, me, k) {
     (i) => (i.ownerId === me || i.assigneeId === me) && isWorkItem(i) && !FINISHED.includes(i.status) && (plan.has(i.id) || (i.currentDeadline && dateKey(i.currentDeadline) === k))
   );
 }
-// Add tasks to a day's plan (the day's list; the first 3 are its Top 3).
-function addToPlan(st, me, k, ids) {
-  const d = sowDay(st, me, k);
-  for (const id of ids) if (!d.top3.includes(id)) d.top3.push(id);
-  d.plannedAt = d.plannedAt || now();
-}
+
 
 // The SOW inside My Tasks: look back at any past day, fill one that's still open,
 // and plan the Top 3 for today or any day ahead.

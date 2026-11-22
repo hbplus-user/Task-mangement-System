@@ -8,7 +8,11 @@ import {
   userById, itemById, sharesVertical, managerOf, firstName, isFounder, loadFor, SIZE_HOURS, verticalById, effectiveDeadline, isAbove, DONE, IMPACT_LABEL, uid,
 } from '../engine/core.js';
 import { potentialPoints } from '../engine/scoring.js';
-import { now, atTime, addDays, toInputDate, startOfWeek, fmtDT, dateKey, parseKey, addKey, DAY } from '../lib/time.js';
+import { addToPlan, upcomingWorkDays } from '../engine/sow.js';
+import { now, atTime, addDays, toInputDate, startOfWeek, fmtDT, fmtDate, dateKey, parseKey, addKey, DAY } from '../lib/time.js';
+
+// 'Today', 'Tomorrow', or 'Mon 24 Nov'
+export const dayLabel = (k) => (k === dateKey(now()) ? 'Today' : k === addKey(dateKey(now()), 1) ? 'Tomorrow' : fmtDate(parseKey(k)));
 
 const TYPES = [
   ['task', 'Task'],
@@ -50,6 +54,7 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
           estHours: '',
           progressMethod: 'stages',
           containerProgress: 'subtasks', // projects & streams
+          sowDay: '', // '' = not added to any SOW; otherwise a date key
           parentId: preset.parentId || '',
           contributors: [],
           goalLinks: [],
@@ -171,6 +176,7 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
       }
       const res = createItem(st, me, data);
       newId = res.id;
+      if (res.id && f.sowDay && ['task', 'subtask'].includes(data.type)) addToPlan(st, data.ownerId, f.sowDay, [res.id]);
       return res;
     });
     if (!r.error) {
@@ -361,6 +367,17 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
             </Field>
           </>
         )}
+        {!isEdit && ['task', 'subtask'].includes(f.type) ? (
+          <Field label="Add to SOW (optional)" className="full" hint={f.sowDay ? `It goes on ${f.ownerId === me ? 'your' : `${firstName(s, f.ownerId)}'s`} plan for that day. The deadline stays as set above.` : 'Put it on a day’s plan now — today, tomorrow or a later day.'}>
+            <div className="row wrap" style={{ gap: 6 }}>
+              <Choice
+                options={[['', 'Not now'], ...upcomingWorkDays(s, 6).map((k) => [k, dayLabel(k)])]}
+                value={f.sowDay}
+                onChange={(v) => set('sowDay', v)}
+              />
+            </div>
+          </Field>
+        ) : null}
         <Field label="Description" className="full">
           <DescInput value={f.desc} onChange={(v) => set('desc', v)} />
         </Field>

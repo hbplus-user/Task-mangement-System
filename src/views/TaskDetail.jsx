@@ -3,7 +3,8 @@ import { useStore } from '../store.jsx';
 import { Icon, Pill, Bar, Flags, StatusPill, Person, go, useRoute, Empty, Modal, Field, impactText, SizeImpact, Deadline } from '../components/ui.jsx';
 import { LineChart } from '../components/charts.jsx';
 import ActionDialog, { ACTION_UI } from '../components/ActionDialog.jsx';
-import TaskForm from '../components/TaskForm.jsx';
+import TaskForm, { dayLabel } from '../components/TaskForm.jsx';
+import { addToPlan, upcomingWorkDays } from '../engine/sow.js';
 import { P } from '../engine/policy.js';
 import {
   itemById, userById, firstName, nameOf, progressOf, progressText, healthTone, projectOf, children, canSeeFull, verticalById, TYPE_LABEL, effectiveDeadline,
@@ -56,6 +57,11 @@ export default function TaskDetail({ id }) {
   const muted = (user.muted || []).includes(item.id);
   const rule = item.recurringId ? s.recurring.find((r) => r.id === item.recurringId) : null;
   const eff = effectiveDeadline(s, item);
+  // "Move to another day": put this task on the owner's (or assignee's) plan for a day.
+  const planner = item.assigneeId === me ? me : item.ownerId === me ? me : null;
+  const canPlan = planner && ['task', 'subtask'].includes(item.type) && ['pending_approval', 'awaiting', 'open', 'in_progress', 'blocked'].includes(item.status);
+  const planDays = canPlan ? upcomingWorkDays(s, 7) : [];
+  const onPlan = planDays.filter((k) => s.sowDays.some((d) => d.userId === planner && d.date === k && (d.top3 || []).includes(item.id)));
 
   return (
     <div>
@@ -99,6 +105,31 @@ export default function TaskDetail({ id }) {
             {BAR_LABEL[a]}
           </button>
         ))}
+        {canPlan && (
+          <select
+            className="input sm"
+            style={{ width: 'auto' }}
+            value=""
+            title="Put this task on a day's SOW. The deadline doesn't change."
+            onChange={(e) => {
+              const k = e.target.value;
+              if (!k) return;
+              commit((st) => {
+                // Take it off the other upcoming days it was planned on (unless that day's SOW is already in).
+                for (const d of st.sowDays) {
+                  if (d.userId === planner && d.date !== k && onPlan.includes(d.date) && !d.submittedAt) d.top3 = d.top3.filter((x) => x !== item.id);
+                }
+                addToPlan(st, planner, k, [item.id]);
+              });
+              toast(`Moved to ${['Today', 'Tomorrow'].includes(dayLabel(k)) ? dayLabel(k).toLowerCase() : dayLabel(k)}'s SOW.`);
+            }}
+          >
+            <option value="">{onPlan.length ? `On SOW: ${onPlan.map(dayLabel).join(', ')} · move to…` : 'Move to a day’s SOW…'}</option>
+            {planDays.filter((k) => !onPlan.includes(k)).map((k) => (
+              <option key={k} value={k}>{dayLabel(k)}</option>
+            ))}
+          </select>
+        )}
         {acts.includes('edit') && (
           <button className="btn ghost" onClick={() => setEditing(true)}>
             Edit
