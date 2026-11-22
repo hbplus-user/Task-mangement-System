@@ -83,7 +83,7 @@ export default function SetupView() {
                     <Choice options={[[1, '1'], [3, '3'], [5, '5']]} value={r.impact} onChange={(v) => set(i, 'impact', v)} />
                   </td>
                   <td style={{ minWidth: 180 }}>
-                    <input className="input sm" placeholder="One line" value={r.impactReason} onChange={(e) => set(i, 'impactReason', e.target.value)} />
+                    <input className="input sm" placeholder="Optional" value={r.impactReason} onChange={(e) => set(i, 'impactReason', e.target.value)} />
                   </td>
                   <td>
                     <input className="input sm" type="date" value={r.date} onChange={(e) => set(i, 'date', e.target.value)} />

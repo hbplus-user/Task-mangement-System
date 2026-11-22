@@ -39,7 +39,6 @@ export function createItem(s, creatorId, d) {
   if (!d.ownerId) return err('Pick one owner.');
   if (!['S', 'M', 'L'].includes(d.size)) return err('Pick a size.');
   if (![1, 3, 5].includes(+d.impact)) return err('Pick an impact.');
-  if (!d.impactReason?.trim()) return err('Add a one-line reason for the impact.');
   if (type !== 'stream' && !d.deadline) return err('Set a deadline.');
   if (type === 'subtask' && !d.parentId) return err('A sub-task needs a parent task.');
   if (type === 'stream' && !(d.kpis || []).filter((k) => k.name).length) return err('A stream needs at least one KPI.');
@@ -66,9 +65,9 @@ export function createItem(s, creatorId, d) {
     reviewerId: reviewerFor(s, creatorId, d.ownerId, vertical),
     size: d.size,
     impact: +d.impact,
-    impactReason: d.impactReason.trim(),
+    impactReason: (d.impactReason || '').trim(),
     estHours: +d.estHours || SIZE_HOURS[d.size],
-    progressMethod: type === 'project' || type === 'stream' ? 'subtasks' : d.progressMethod || 'stages',
+    progressMethod: d.progressMethod || (type === 'project' || type === 'stream' ? 'subtasks' : 'stages'),
     progress: 0,
     stage: 0,
     checklist: (d.checklist || []).filter(Boolean).map((text) => ({ id: uid('k'), text, done: false })),
@@ -108,7 +107,7 @@ export function createItem(s, creatorId, d) {
     // Self-created: the owner's manager (the reviewer) confirms size & impact (PRD §6).
     if (self && item.reviewerId !== creatorId && !d.recurringId && !d.setup && (type === 'task' || type === 'subtask')) {
       requestApproval(s, 'self_review', item, creatorId, [item.reviewerId], { size: item.size, impact: item.impact },
-        `${firstName(s, creatorId)} created *${item.title}* for themselves — size ${item.size}, impact ${item.impact} (“${item.impactReason}”). Confirm or adjust.`);
+        `${firstName(s, creatorId)} created *${item.title}* for themselves — size ${item.size}, impact ${item.impact}${item.impactReason ? ` (“${item.impactReason}”)` : ''}. Confirm or adjust.`);
     }
   } else {
     sendAssignedDM(s, item);
@@ -374,7 +373,7 @@ export function allowedActions(s, userId, item) {
   const container = item.type === 'project' || item.type === 'stream';
   const a = [];
   if (st === 'awaiting' && owner && !item.declined) a.push('accept', 'decline');
-  if (working && (owner || assignee) && item.type !== 'stream') a.push('update');
+  if (working && (owner || assignee) && (item.type !== 'stream' || item.progressMethod !== 'subtasks')) a.push('update');
   if (working && owner && !item.assigneeId && !container) a.push('give_assignee');
   if (item.assigneeId && (owner || assignee) && [...['open', 'in_progress', 'blocked']].includes(st)) a.push('assign_back');
   if (working && (owner || assignee) && !container) a.push('block');
@@ -835,7 +834,6 @@ export function submitSetupList(s, userId, rows) {
   if (!list.length) return err('Add at least one task.');
   for (const r of list) {
     if (!r.deadline) return err(`“${r.title}”: set a deadline.`);
-    if (!r.impactReason?.trim()) return err(`“${r.title}”: add a one-line reason for the impact.`);
   }
   const ids = [];
   for (const r of list) {

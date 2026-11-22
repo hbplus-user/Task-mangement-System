@@ -275,7 +275,7 @@ export default function TaskDetail({ id }) {
               </Pill>
               <Pill tone={item.impact === 5 ? 'overdue' : item.impact === 3 ? 'gold' : ''}>{impactText(item.impact)}</Pill>
             </div>
-            <div className="muted mt-sm">“{item.impactReason}”</div>
+            {item.impactReason && <div className="muted mt-sm">“{item.impactReason}”</div>}
             <div className="row" style={{ borderTop: '1px solid var(--line)', marginTop: 14, paddingTop: 12 }}>
               <span className="muted spacer">{item.status === 'closed' ? 'Rating' : 'Potential points'}</span>
               <b style={{ color: 'var(--primary-ink)' }}>

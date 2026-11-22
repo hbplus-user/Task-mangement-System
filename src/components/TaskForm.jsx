@@ -49,6 +49,7 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
           impactReason: '',
           estHours: '',
           progressMethod: 'stages',
+          containerProgress: 'subtasks', // projects & streams
           parentId: preset.parentId || '',
           contributors: [],
           goalLinks: [],
@@ -141,7 +142,7 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
       impact: +f.impact,
       impactReason: f.impactReason,
       estHours: f.estHours,
-      progressMethod: f.progressMethod,
+      progressMethod: ['project', 'stream'].includes(f.type) ? f.containerProgress : f.progressMethod,
       parentId: noParent ? null : f.parentId || null,
       contributors: f.contributors,
       goalLinks: f.goalLinks,
@@ -162,7 +163,7 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
     let newId = null;
     const r = commit((st) => {
       if (f.type === 'recurring') {
-        if (!data.title?.trim() || !data.impactReason?.trim()) return { error: 'Title and impact reason are needed.' };
+        if (!data.title?.trim()) return { error: 'Give it a title.' };
         if (dueAfterDays < 0) return { error: 'The first due date must be on or after the first occurrence.' };
         const res = createRecurringRule(st, me, { ...data, dueTime: f.dueTime || P(s, 'defaultDeadlineTime'), freq: f.freq, everyDays: f.everyDays, dueAfterDays, firstRun: atTime(f.firstRun, '09:00') });
         newId = res.id;
@@ -252,7 +253,7 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
         <Field label="Impact">
           <Choice options={[[1, '1 Low'], [3, '3 Medium'], [5, '5 Critical']]} value={+f.impact} onChange={(v) => !sizeLocked && set('impact', v)} />
         </Field>
-        <Field label="Why this impact? (one line)" className="full" hint={sizeLocked ? 'Only the creator, owner’s manager or founders change size & impact. You can flag a disagreement from the task page.' : `Worth ${pts.base} base points · up to ${pts.max} if early with 3★`}>
+        <Field label="Why this impact? (optional)" className="full" hint={sizeLocked ? 'Only the creator, owner’s manager or founders change size & impact. You can flag a disagreement from the task page.' : `Worth ${pts.base} base points · up to ${pts.max} if early with 3★`}>
           <input className="input" disabled={sizeLocked} value={f.impactReason} onChange={(e) => set('impactReason', e.target.value)} placeholder={`e.g. ${IMPACT_LABEL[f.impact]} — client safety, revenue, launch…`} />
         </Field>
         {f.type !== 'stream' && (
@@ -265,7 +266,12 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
             <Choice options={[['stages', 'Stages'], ['checklist', 'Checklist'], ['subtasks', 'Sub-tasks']]} value={f.progressMethod} onChange={(v) => set('progressMethod', v)} />
           </Field>
         )}
-        {!isEdit && f.progressMethod === 'checklist' && ['task', 'subtask', 'recurring'].includes(f.type) && (
+        {!isEdit && ['project', 'stream'].includes(f.type) && (
+          <Field label="Progress method" hint={f.containerProgress === 'subtasks' ? (f.type === 'stream' ? 'Worked out from its cycles and tasks.' : 'Worked out from the tasks inside it.') : f.containerProgress === 'stages' ? 'The owner sets the stage with each update.' : 'Ticks off a checklist.'}>
+            <Choice options={[['subtasks', f.type === 'stream' ? 'From cycles & tasks' : 'From tasks inside'], ['stages', 'Stages'], ['checklist', 'Checklist']]} value={f.containerProgress} onChange={(v) => set('containerProgress', v)} />
+          </Field>
+        )}
+        {!isEdit && (['project', 'stream'].includes(f.type) ? f.containerProgress : f.progressMethod) === 'checklist' && (
           <Field label="Checklist (one item per line)" className="full">
             <textarea className="input" value={f.checklistText} onChange={(e) => set('checklistText', e.target.value)} />
           </Field>
@@ -361,7 +367,7 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
           </>
         )}
         <Field label="Description" className="full">
-          <textarea className="input" value={f.desc} onChange={(e) => set('desc', e.target.value)} placeholder="What does done look like?" />
+          <DescInput value={f.desc} onChange={(v) => set('desc', v)} />
         </Field>
         <Field label="Reference links" className="full" hint="Links only — no file uploads.">
           {f.links.map((l, i) => (
@@ -425,5 +431,56 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
         </div>
       ))}
     </Modal>
+  );
+}
+
+/* Description: write a summary, and switch on Points so Enter starts a new "• " line. */
+export function DescInput({ value, onChange, placeholder = 'What does done look like?' }) {
+  const [points, setPoints] = useState(() => /^\s*•/m.test(value || ''));
+  const ref = React.useRef(null);
+  const caret = React.useRef(null); // where the cursor goes after the next render
+  React.useLayoutEffect(() => {
+    if (caret.current == null || !ref.current) return;
+    ref.current.focus();
+    ref.current.selectionStart = ref.current.selectionEnd = caret.current;
+    caret.current = null;
+  }, [value]);
+  const insertAtCursor = (text) => {
+    const el = ref.current;
+    const v = value || '';
+    const a = el ? el.selectionStart : v.length;
+    const b = el ? el.selectionEnd : v.length;
+    caret.current = a + text.length;
+    onChange(v.slice(0, a) + text + v.slice(b));
+  };
+  const startPoints = () => {
+    setPoints(true);
+    const v = value || '';
+    const el = ref.current;
+    if (el) el.selectionStart = el.selectionEnd = v.length;
+    insertAtCursor(v.trim() === '' ? '• ' : v.endsWith('\n') ? '• ' : '\n• ');
+  };
+  const onKeyDown = (e) => {
+    if (!points || e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault();
+    const v = value || '';
+    const a = e.target.selectionStart;
+    const lineStart = v.lastIndexOf('\n', a - 1) + 1;
+    // Enter on an empty bullet ends the list.
+    if (v.slice(lineStart, a).trim() === '•') {
+      onChange(v.slice(0, lineStart) + v.slice(a));
+      setPoints(false);
+      return;
+    }
+    insertAtCursor('\n• ');
+  };
+  return (
+    <div>
+      <div className="row" style={{ gap: 6, marginBottom: 6 }}>
+        <Seg sm options={[['text', 'Summary'], ['points', '• Points']]} value={points ? 'points' : 'text'} onChange={(m) => (m === 'points' ? startPoints() : setPoints(false))} />
+        <span className="tiny muted">{points ? 'Enter adds a new point · Enter on an empty point ends the list' : 'Write a summary · switch to Points for a bullet list'}</span>
+      </div>
+      <textarea ref={ref} className="input" rows={points ? 5 : 3} value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown} placeholder={placeholder} />
+    </div>
   );
 }

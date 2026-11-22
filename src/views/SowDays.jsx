@@ -239,7 +239,6 @@ function CreateSow({ day, onClose }) {
   const toggle = (id) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id]);
 
   const save = () => {
-    for (const r of filled) if (!r.reason.trim()) return toast(`“${r.title}”: add a one-line reason for the impact.`, 'error');
     if (!picked.length && !filled.length) return toast('Pick a task or add a new one.', 'error');
     let made = 0;
     const res = commit((st) => {
@@ -300,7 +299,7 @@ function CreateSow({ day, onClose }) {
               <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
                 <Choice options={[['S', 'S'], ['M', 'M'], ['L', 'L']]} value={r.size} onChange={(v) => setRow(n, 'size', v)} />
                 <Choice options={[[1, '1 Low'], [3, '3 Medium'], [5, '5 Critical']]} value={+r.impact} onChange={(v) => setRow(n, 'impact', v)} />
-                <input className="input sm grow" placeholder="Why this impact? (one line)" value={r.reason} onChange={(e) => setRow(n, 'reason', e.target.value)} />
+                <input className="input sm grow" placeholder="Why this impact? (optional)" value={r.reason} onChange={(e) => setRow(n, 'reason', e.target.value)} />
               </div>
             )}
           </div>

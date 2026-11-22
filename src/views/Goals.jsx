@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
+import { DescInput } from '../components/TaskForm.jsx';
 import { Accent, Pill, Bar, Modal, Field, Choice, Empty, UserSelect, Icon } from '../components/ui.jsx';
 import {
   GOAL_TYPES, GOAL_LABEL, MEASURES, periodOptions, goalProgress, goalHealth, HEALTH_LABEL, HEALTH_TONE, createGoal, checkInGoal, setGoalStatus,
@@ -292,7 +293,7 @@ function GoalForm({ person, period, onClose }) {
           <Choice options={[1, 2, 3, 4, 5].map((n) => [n, String(n)])} value={+f.weight} onChange={(v) => set('weight', v)} />
         </Field>
         <Field label="Description (optional)" className="full">
-          <textarea className="input" value={f.desc} onChange={(e) => set('desc', e.target.value)} placeholder="What does success look like?" />
+          <DescInput value={f.desc} onChange={(v) => set('desc', v)} placeholder="What does success look like?" />
         </Field>
       </div>
     </Modal>
