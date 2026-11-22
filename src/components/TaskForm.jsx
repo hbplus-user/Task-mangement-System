@@ -83,6 +83,22 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
   const dueAfterDays = f.firstRun && firstDue ? Math.round((parseKey(firstDue) - parseKey(f.firstRun)) / DAY) : 0;
   // Stream: first cycle due date defaults to the end of the first cycle.
   const cycleDueDate = f.cycleDueDate || (f.cycleStart ? dateKey(cycleEnd(parseKey(f.cycleStart), f.cycleLength)) : '');
+  // KPIs entered before, newest first — offered in the KPI dropdowns.
+  const pastKpis = useMemo(() => {
+    const byName = new Map();
+    for (const k of [...s.kpis].reverse()) if (k.name && !byName.has(k.name.toLowerCase())) byName.set(k.name.toLowerCase(), k);
+    return [...byName.values()];
+  }, [s.kpis]);
+  const pastUnits = useMemo(() => [...new Set(s.kpis.map((k) => k.unit).filter(Boolean))], [s.kpis]);
+  const setKpiName = (i, name) =>
+    set('kpis', f.kpis.map((x, j) => {
+      if (j !== i) return x;
+      const known = pastKpis.find((k) => k.name.toLowerCase() === name.trim().toLowerCase());
+      // Picking a KPI used before fills its unit, direction, target and source.
+      return known
+        ? { ...x, name, unit: x.unit || known.unit || '', dir: known.dir || x.dir, target: x.target === '' ? String(known.target ?? '') : x.target, src: known.source && known.source !== 'manual' ? `${known.source}:${known.sourceMetric}` : x.src }
+        : { ...x, name };
+    }));
   const owner = userById(s, isEdit ? edit.ownerId : f.ownerId);
   const deadline = isEdit ? edit.currentDeadline : f.date ? atTime(f.date, f.time || '18:30') : null;
   const vertical = isEdit ? edit.vertical : f.vertical || owner?.verticals.find((v) => v.main)?.vid;
@@ -345,13 +361,13 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
             <Field label="KPIs (required for streams)" className="full" hint="Actuals are entered every Saturday with a source link; the manager verifies at cycle end.">
               {f.kpis.map((k, i) => (
                 <div key={i} className="row wrap">
-                  <input className="input sm" style={{ flex: 2 }} placeholder="KPI name (e.g. Leads)" value={k.name} onChange={(e) => set('kpis', f.kpis.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                  <input className="input sm" style={{ flex: 2 }} list="hb-kpi-names" placeholder="KPI name — pick or type" value={k.name} onChange={(e) => setKpiName(i, e.target.value)} />
                   <select className="input sm" style={{ width: 70 }} value={k.dir} onChange={(e) => set('kpis', f.kpis.map((x, j) => (j === i ? { ...x, dir: e.target.value } : x)))}>
                     <option value=">=">≥</option>
                     <option value="<=">≤</option>
                   </select>
                   <input className="input sm" style={{ width: 100 }} placeholder="Target" type="number" value={k.target} onChange={(e) => set('kpis', f.kpis.map((x, j) => (j === i ? { ...x, target: e.target.value } : x)))} />
-                  <input className="input sm" style={{ width: 70 }} placeholder="Unit" value={k.unit} onChange={(e) => set('kpis', f.kpis.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)))} />
+                  <input className="input sm" style={{ width: 70 }} list="hb-kpi-units" placeholder="Unit" value={k.unit} onChange={(e) => set('kpis', f.kpis.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)))} />
                   <select className="input sm" style={{ width: 230 }} value={k.src || 'manual'} onChange={(e) => set('kpis', f.kpis.map((x, j) => (j === i ? { ...x, src: e.target.value } : x)))} title="Where the weekly number comes from">
                     {KPI_SOURCES.map(([v, l]) => (
                       <option key={v} value={v}>
@@ -361,6 +377,14 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
                   </select>
                 </div>
               ))}
+              <datalist id="hb-kpi-names">
+                {pastKpis.map((k) => (
+                  <option key={k.id} value={k.name}>{`${k.dir === '<=' ? '≤' : '≥'} ${k.target ?? ''} ${k.unit || ''}`.trim()}</option>
+                ))}
+              </datalist>
+              <datalist id="hb-kpi-units">
+                {pastUnits.map((u) => <option key={u} value={u} />)}
+              </datalist>
               <button className="btn xs" onClick={() => set('kpis', [...f.kpis, { name: '', target: '', unit: '', dir: '>=', src: 'manual' }])}>
                 + KPI
               </button>
