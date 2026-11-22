@@ -242,11 +242,6 @@ export default function TaskForm({ onClose, edit = null, preset = {} }) {
             </select>
           </Field>
         )}
-        {!isEdit && ['project', 'stream'].includes(f.type) && (
-          <Field label="Key prefix (optional)" hint="e.g. DIW → task IDs DIW-01, DIW-02…">
-            <input className="input" maxLength={4} value={f.projKey} onChange={(e) => set('projKey', e.target.value.toUpperCase())} />
-          </Field>
-        )}
         <Field label="Size">
           <Choice options={[['S', 'S · ≤2 days'], ['M', 'M · 3–10 days'], ['L', 'L · >10 days']]} value={f.size} onChange={(v) => !sizeLocked && set('size', v)} />
         </Field>

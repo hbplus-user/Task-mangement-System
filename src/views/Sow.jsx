@@ -202,7 +202,10 @@ export default function SowView() {
             <span className="small muted">{top.planned ? 'Picked by you yesterday' : 'Suggested for you'}</span>
           </div>
           <div className="stack-sm" style={{ gap: 14 }}>
-            {topItems.length ? topItems.map((i) => <TaskCard key={i.id} item={i} />) : <Empty>No open tasks — enjoy the calm, or pick something from My Tasks.</Empty>}
+            {topItems.length ? topItems.slice(0, 3).map((i) => <TaskCard key={i.id} item={i} />) : <Empty>No open tasks — enjoy the calm, or pick something from My Tasks.</Empty>}
+            {topItems.length > 3 && (
+              <a className="small" href="#/tasks?view=sow">+ {topItems.length - 3} more planned for today</a>
+            )}
           </div>
         </div>
         <div className="stack">
